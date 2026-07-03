@@ -1,8 +1,8 @@
 import { useStore } from '../store';
 import { getStoredSession } from './adminAccess';
-import type { ConfiguracionAcademica } from '../types';
+import type { ConfiguracionAcademica, SeedData } from '../types';
 
-export type SyncStatus = 'idle' | 'loading' | 'saving' | 'synced' | 'error' | 'offline' | 'pending';
+export type SyncStatus = 'idle' | 'loading' | 'saving' | 'synced' | 'error' | 'offline';
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let syncing = false;
@@ -11,7 +11,8 @@ let hydrating = false;
 let lastError: string | null = null;
 let listeners = new Set<(s: SyncStatus, err: string | null) => void>();
 let currentStatus: SyncStatus = 'idle';
-let subscribed = false;
+/** Timestamp del último estado aplicado desde el servidor (ISO o Date string). */
+let lastServerUpdatedAt: string | null = null;
 
 function notify(status: SyncStatus, err: string | null = null) {
   currentStatus = status;
@@ -20,7 +21,7 @@ function notify(status: SyncStatus, err: string | null = null) {
 }
 
 export function getSyncStatus() {
-  return { status: currentStatus, error: lastError };
+  return { status: currentStatus, error: lastError, lastServerUpdatedAt };
 }
 
 export function subscribeSyncStatus(fn: (s: SyncStatus, err: string | null) => void) {
@@ -38,44 +39,53 @@ function authHeaders(): HeadersInit {
   return headers;
 }
 
-function stateRichness(s: {
-  archivosCargados?: unknown[];
-  calificaciones?: unknown[];
+function applyServerEstado(e: {
+  calificaciones?: SeedData['calificaciones'];
+  alertas?: SeedData['alertas'];
+  archivosCargados?: SeedData['archivosCargados'];
+  intervenciones?: SeedData['intervenciones'];
+  periodoActivo?: SeedData['periodoActivo'];
+  actualizadoEn?: string;
 }) {
-  return {
-    archivos: s.archivosCargados?.length ?? 0,
-    califs: s.calificaciones?.length ?? 0,
-  };
-}
-
-function isRicher(
-  a: { archivos: number; califs: number },
-  b: { archivos: number; califs: number }
-) {
-  return a.archivos > b.archivos || (a.archivos === b.archivos && a.califs > b.califs);
+  useStore.setState({
+    calificaciones: e.calificaciones ?? [],
+    alertas: e.alertas ?? [],
+    archivosCargados: e.archivosCargados ?? [],
+    intervenciones: e.intervenciones ?? [],
+    periodoActivo: e.periodoActivo ?? 'P1',
+  });
+  if (e.actualizadoEn) {
+    lastServerUpdatedAt = String(e.actualizadoEn);
+  }
 }
 
 /**
- * @deprecated La sincronización automática global se desactivó.
- * Solo Admin (carga de archivos / botón) y Config (guardar) escriben en el servidor.
+ * Carga siempre desde el servidor (fuente de verdad).
+ * Sobrescribe la caché local del navegador.
  */
-export function startStoreSync() {
-  subscribed = true;
-}
+export async function hydrateFromServer(options?: {
+  silent?: boolean;
+  onlyIfNewer?: boolean;
+}): Promise<{ fromServer: boolean; registros: number; updated: boolean }> {
+  const silent = options?.silent ?? false;
+  const onlyIfNewer = options?.onlyIfNewer ?? false;
 
-/** Carga estado desde MySQL. Si este dispositivo tiene MÁS datos, los conserva y sube al servidor. */
-export async function hydrateFromServer(): Promise<{ fromServer: boolean; registros: number }> {
+  if (hydrating || syncing) {
+    return { fromServer: false, registros: 0, updated: false };
+  }
+
   hydrating = true;
-  notify('loading');
+  if (!silent) notify('loading');
+
   try {
     const [estadoRes, configRes] = await Promise.all([
-      fetch('/api/data/estado'),
-      fetch('/api/data/config'),
+      fetch('/api/data/estado', { cache: 'no-store' }),
+      fetch('/api/data/config', { cache: 'no-store' }),
     ]);
 
     if (!estadoRes.ok && estadoRes.status === 503) {
-      notify('offline', 'Servidor de datos no disponible');
-      return { fromServer: false, registros: 0 };
+      if (!silent) notify('offline', 'Servidor de datos no disponible');
+      return { fromServer: false, registros: 0, updated: false };
     }
 
     const estadoData = await estadoRes.json();
@@ -85,54 +95,57 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
       useStore.setState({ configuracion: configData.configuracion as ConfiguracionAcademica });
     }
 
-    const local = useStore.getState();
-    const localR = stateRichness(local);
-
     if (estadoData.ok && !estadoData.empty && estadoData.estado) {
       const e = estadoData.estado;
-      const serverR = stateRichness(e);
+      const serverTs = e.actualizadoEn ? String(e.actualizadoEn) : null;
 
-      /* Este navegador tiene más datos que el servidor: no pisar; sincronizar desde Admin. */
-      if (localR.archivos > 0 && isRicher(localR, serverR)) {
-        notify(
-          'pending',
-          `Este dispositivo tiene ${localR.archivos} archivos y el servidor ${serverR.archivos}. Abra Administración y pulse «Sincronizar ahora».`
-        );
-        return { fromServer: false, registros: localR.califs };
+      if (onlyIfNewer && serverTs && lastServerUpdatedAt && serverTs === lastServerUpdatedAt) {
+        if (!silent) notify('synced');
+        return {
+          fromServer: true,
+          registros: (e.calificaciones ?? []).length,
+          updated: false,
+        };
       }
 
-      useStore.setState({
-        calificaciones: e.calificaciones ?? [],
-        alertas: e.alertas ?? [],
-        archivosCargados: e.archivosCargados ?? [],
-        intervenciones: e.intervenciones ?? [],
-        periodoActivo: e.periodoActivo ?? 'P1',
-      });
-      notify('synced');
-      return { fromServer: true, registros: serverR.califs };
+      applyServerEstado(e);
+      if (!silent) notify('synced');
+      return {
+        fromServer: true,
+        registros: (e.calificaciones ?? []).length,
+        updated: true,
+      };
     }
 
-    if (localR.califs > 0) {
-      notify(
-        'pending',
-        `Hay ${localR.archivos} archivos solo en este dispositivo. Abra Administración y pulse «Sincronizar ahora».`
-      );
-      return { fromServer: false, registros: localR.califs };
-    }
-
-    notify('idle');
-    return { fromServer: false, registros: 0 };
+    /* Servidor vacío: limpiar vista para no mostrar datos viejos de IndexedDB */
+    useStore.setState({
+      calificaciones: [],
+      alertas: [],
+      archivosCargados: [],
+      intervenciones: [],
+      periodoActivo: 'P1',
+    });
+    lastServerUpdatedAt = null;
+    if (!silent) notify('idle');
+    return { fromServer: true, registros: 0, updated: true };
   } catch (err) {
-    notify('offline', err instanceof Error ? err.message : 'Sin conexión al servidor');
-    return { fromServer: false, registros: 0 };
+    if (!silent) {
+      notify('offline', err instanceof Error ? err.message : 'Sin conexión al servidor');
+    }
+    return { fromServer: false, registros: 0, updated: false };
   } finally {
     hydrating = false;
   }
 }
 
+/** @deprecated No usar sync automático global. */
+export function startStoreSync() {
+  /* no-op */
+}
+
 /**
- * Guarda el estado actual en MySQL (requiere sesión admin).
- * Si ya hay un guardado en curso, encola otro al terminar (no pierde cargas múltiples).
+ * Guarda el estado actual en MySQL (solo desde Admin/Config).
+ * Tras guardar, actualiza lastServerUpdatedAt para no pisar con datos viejos.
  */
 export async function pushStateToServer(): Promise<boolean> {
   if (syncing) {
@@ -177,7 +190,6 @@ export async function pushStateToServer(): Promise<boolean> {
 
     if (res.ok && data.ok) {
       ok = true;
-      notify('synced');
     } else {
       lastError = typeof data.error === 'string' ? data.error : 'No se pudo guardar en el servidor';
       notify('error', lastError);
@@ -189,6 +201,12 @@ export async function pushStateToServer(): Promise<boolean> {
     ok = false;
   } finally {
     syncing = false;
+  }
+
+  if (ok) {
+    /* Alinear timestamp del servidor para que otros dispositivos detecten la versión nueva */
+    await hydrateFromServer({ silent: true, onlyIfNewer: false });
+    notify('synced');
   }
 
   if (pendingPush) {
@@ -215,7 +233,6 @@ export async function pushConfigToServer(): Promise<boolean> {
   }
 }
 
-/** Guarda en el servidor con debounce (cargas múltiples en lote). */
 export function schedulePushToServer(delayMs = 400) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {

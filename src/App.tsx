@@ -42,7 +42,7 @@ export default function App() {
   const { calificaciones } = useStore();
 
   useEffect(() => {
-    /* Solo lectura al abrir la app. La escritura es solo desde Admin/Config. */
+    /* Lectura desde servidor solo al abrir/recargar la página. Escritura solo Admin/Config. */
     const unsubStatus = subscribeSyncStatus((s, err) => {
       setSyncStatus(s);
       setSyncError(err);
