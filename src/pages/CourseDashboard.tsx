@@ -17,7 +17,7 @@ import { NotaTag } from '../components/NotaTag';
 import { CourseDistribucionChart } from '../components/CourseDistribucionChart';
 import { CourseAsignaturasBarChart } from '../components/CourseAsignaturasBarChart';
 import {
-  Search, AlertCircle, Users, TrendingUp, TrendingDown, FileWarning,
+  Search, AlertCircle, Users, TrendingUp, TrendingDown,
   PieChart as PieChartIcon, RotateCcw, GraduationCap, X, BookOpen
 } from 'lucide-react';
 import {
@@ -52,7 +52,7 @@ const periodoAnterior = (p: PeriodoAnalisis): PeriodoAnalisis | null => {
 };
 
 export const CourseDashboard: React.FC = () => {
-  const { calificaciones, configuracion, periodoActivo, alertas } = useStore();
+  const { calificaciones, configuracion, periodoActivo } = useStore();
   const periodo = periodoActivo as PeriodoAnalisis;
 
   const [filtroNivel, setFiltroNivel] = useState('');
@@ -216,12 +216,6 @@ export const CourseDashboard: React.FC = () => {
 
     const asigMasCritica = asignaturasPerdidas[0] ?? null;
 
-    const alertasCount = alertas.filter(a =>
-      a.estado === 'Pendiente' &&
-      a.curso === grupoActivo.curso &&
-      (a as { nivel?: string }).nivel === grupoActivo.nivel
-    ).length;
-
     const calcularPromedioCursoPeriodo = (per: PeriodoAnalisis) => {
       const avgs: number[] = [];
       estudiantes.forEach(est => {
@@ -255,14 +249,13 @@ export const CourseDashboard: React.FC = () => {
       perAnt,
       pctRiesgoAlto,
       estudiantesRiesgoAlto,
-      alertasCount,
       distribucion,
       asignaturasPerdidas,
       asigMasCritica,
       trendData,
       rankingEstudiantes,
     };
-  }, [grupoActivo, calificaciones, periodo, configuracion, alertas]);
+  }, [grupoActivo, calificaciones, periodo, configuracion]);
 
   const estudiantesFiltrados = useMemo(() => {
     if (!metrics) return [];
@@ -438,7 +431,7 @@ export const CourseDashboard: React.FC = () => {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
@@ -507,16 +500,6 @@ export const CourseDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600">
-              <FileWarning className="w-4 h-4" />
-            </div>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Alertas</h3>
-          </div>
-          <div className="text-2xl font-black text-slate-800">{metrics.alertasCount}</div>
-          <p className="text-[10px] text-slate-400 mt-1 uppercase">Pendientes del curso</p>
-        </div>
       </div>
 
       {/* Gráficos — donut más ancho, barras más compactas */}

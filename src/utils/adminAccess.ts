@@ -36,17 +36,47 @@ function authHeaders(session: AdminSession): HeadersInit {
   };
 }
 
-export async function verifyAccessCode(codigo: string, modulo: string): Promise<AdminSession> {
-  const res = await fetch('/api/auth/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigo, modulo }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    throw new Error(data.error ?? 'Código incorrecto');
+async function readJsonResponse(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error('El servidor no respondió. Revise que la app Node esté en ejecución.');
   }
-  const session: AdminSession = { token: data.token, expiresAt: data.expiresAt };
+  if (trimmed.startsWith('<!') || trimmed.startsWith('<html')) {
+    throw new Error(
+      'La API no está activa: el servidor devolvió HTML en lugar de JSON. ' +
+      'En hPanel use Entry file = server.js y Output directory = dist, luego reinicie la app. ' +
+      'Pruebe /api/health en el navegador.'
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    throw new Error('Respuesta inválida del servidor. Pruebe /api/health.');
+  }
+}
+
+export async function verifyAccessCode(codigo: string, modulo: string): Promise<AdminSession> {
+  let res: Response;
+  try {
+    res = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo, modulo }),
+    });
+  } catch {
+    throw new Error('No se pudo contactar la API. Verifique que el servidor Node esté activo.');
+  }
+
+  const data = await readJsonResponse(res);
+  if (!res.ok || !data.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Código incorrecto');
+  }
+
+  const session: AdminSession = {
+    token: String(data.token),
+    expiresAt: String(data.expiresAt),
+  };
   setStoredSession(session);
   return session;
 }
@@ -56,15 +86,20 @@ export async function validateStoredSession(): Promise<boolean> {
   if (!session) return false;
   try {
     const res = await fetch('/api/auth/session', { headers: authHeaders(session) });
+    const text = await res.text();
+    if (text.trim().startsWith('<')) {
+      clearStoredSession();
+      return false;
+    }
     if (!res.ok) {
       clearStoredSession();
       return false;
     }
-    const data = await res.json();
+    const data = JSON.parse(text) as { autenticado?: boolean };
     return data.autenticado === true;
   } catch {
-    /* Sin API: confiar en sesión local si no expiró */
-    return true;
+    clearStoredSession();
+    return false;
   }
 }
 

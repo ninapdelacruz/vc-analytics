@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "tsx server/index.ts",
-    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=server.js --packages=external",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external",
     "build": "vite build && npm run build:server && node scripts/verify-build.mjs",
     "preview": "vite preview",
     "start": "node server.js",

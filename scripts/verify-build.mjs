@@ -1,12 +1,22 @@
 import fs from 'fs';
 import path from 'path';
 
-const required = ['dist/index.html', 'server.js'];
-const missing = required.filter(f => !fs.existsSync(path.join(process.cwd(), f)));
+const root = process.cwd();
+const distServer = path.join(root, 'dist', 'server.js');
+const rootServer = path.join(root, 'server.js');
+const indexHtml = path.join(root, 'dist', 'index.html');
 
-if (missing.length > 0) {
-  console.error('[postbuild] Faltan artefactos de build:', missing.join(', '));
+if (!fs.existsSync(indexHtml)) {
+  console.error('[postbuild] Falta dist/index.html');
   process.exit(1);
 }
 
-console.log('[postbuild] OK — dist/index.html + server.js (entry Hostinger)');
+if (!fs.existsSync(distServer)) {
+  console.error('[postbuild] Falta dist/server.js');
+  process.exit(1);
+}
+
+/* Hostinger puede usar entry en raíz o dentro de dist/ */
+fs.copyFileSync(distServer, rootServer);
+
+console.log('[postbuild] OK — dist/index.html + dist/server.js + server.js');

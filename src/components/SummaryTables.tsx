@@ -6,7 +6,6 @@ interface SummaryTablesProps {
   cursosResumen: any[];
   asignaturasResumen: any[];
   estudiantesPrioritarios: any[];
-  alertasAfectanResumen: any[];
   onFilterCurso: (curso: string) => void;
   onFilterAsignatura: (asignatura: string) => void;
   onFilterRiesgo: (riesgo: string) => void;
@@ -16,18 +15,16 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
   cursosResumen,
   asignaturasResumen,
   estudiantesPrioritarios,
-  alertasAfectanResumen,
   onFilterCurso,
   onFilterAsignatura,
   onFilterRiesgo,
 }) => {
-  const [activeTab, setActiveTab] = useState<'cursos' | 'asignaturas' | 'estudiantes' | 'alertas'>('cursos');
+  const [activeTab, setActiveTab] = useState<'cursos' | 'asignaturas' | 'estudiantes'>('cursos');
 
   // Search states
   const [searchCurso, setSearchCurso] = useState('');
   const [searchAsignatura, setSearchAsignatura] = useState('');
   const [searchEstudiante, setSearchEstudiante] = useState('');
-  const [searchAlerta, setSearchAlerta] = useState('');
 
   // PROBLEM 14: Default prioritarios filters and sorting
   const [mostrarTodosPrioritarios, setMostrarTodosPrioritarios] = useState(false);
@@ -43,9 +40,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
   const [sortFieldEstudiante, setSortFieldEstudiante] = useState<string>('asignaturasPerdidas');
   const [sortOrderEstudiante, setSortOrderEstudiante] = useState<'asc' | 'desc'>('desc');
 
-  const [sortFieldAlerta, setSortFieldAlerta] = useState<string>('gravedad');
-  const [sortOrderAlerta, setSortOrderAlerta] = useState<'asc' | 'desc'>('desc');
-
   // Pagination states
   const [pageCurso, setPageCurso] = useState(1);
   const pageSizeCurso = 5;
@@ -55,9 +49,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
 
   const [pageEstudiante, setPageEstudiante] = useState(1);
   const pageSizeEstudiante = 10;
-
-  const [pageAlerta, setPageAlerta] = useState(1);
-  const pageSizeAlerta = 5;
 
   // Reusable search + sort + pagination processor
   const processData = <T,>(
@@ -187,19 +178,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
     );
   }, [filteredPrioritarios, searchEstudiante, sortFieldEstudiante, sortOrderEstudiante, pageEstudiante]);
 
-  // Process Alertas
-  const processedAlertas = useMemo(() => {
-    return processData(
-      alertasAfectanResumen,
-      searchAlerta,
-      ['tipo', 'archivo', 'curso', 'descripcion', 'codigoAsignatura', 'nombreAsignatura'],
-      sortFieldAlerta,
-      sortOrderAlerta,
-      pageAlerta,
-      pageSizeAlerta
-    );
-  }, [alertasAfectanResumen, searchAlerta, sortFieldAlerta, sortOrderAlerta, pageAlerta]);
-
   // Exports
   const exportCursos = () => {
     const headers = ['Nivel', 'Grado', 'Curso', 'Total Estudiantes', 'Promedio General', '% en Bajo', 'Estudiantes con Pérdidas', 'Riesgo Alto', 'Riesgo Crítico', 'Asignatura Crítica', 'Alertas Pendientes'];
@@ -254,21 +232,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
     exportToCSV(data, 'estudiantes_prioritarios', headers);
   };
 
-  const exportAlertas = () => {
-    const headers = ['Gravedad', 'Tipo de Alerta', 'Archivo', 'Curso', 'Código Asignatura', 'Nombre Asignatura', 'Descripción', 'Acción Sugerida'];
-    const data = alertasAfectanResumen.map(a => ({
-      gravedad: a.gravedad,
-      tipo: a.tipo,
-      archivo: a.archivo,
-      curso: a.curso || 'Todos',
-      codigo: a.codigoAsignatura || 'N/A',
-      nombre: a.nombreAsignatura || 'N/A',
-      desc: a.descripcion,
-      accion: a.accionSugerida,
-    }));
-    exportToCSV(data, 'alertas_calidad', headers);
-  };
-
   const getRiesgoStyle = (r: string) => {
     switch (r) {
       case 'Crítico': return 'bg-red-100 text-red-800 font-bold';
@@ -288,7 +251,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
           { id: 'cursos', label: 'Resumen por Curso', count: cursosResumen.length },
           { id: 'asignaturas', label: 'Resumen por Asignatura', count: asignaturasResumen.length },
           { id: 'estudiantes', label: 'Estudiantes Prioritarios', count: estudiantesPrioritarios.length },
-          { id: 'alertas', label: 'Alertas de Calidad', count: alertasAfectanResumen.length, color: 'text-red-600' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -300,7 +262,7 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
             }`}
           >
-            <span className={tab.color}>{tab.label}</span>
+            <span>{tab.label}</span>
             <span className="bg-slate-200/80 text-slate-700 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold">
               {tab.count}
             </span>
@@ -698,122 +660,6 @@ export const SummaryTables: React.FC<SummaryTablesProps> = ({
           </div>
         )}
 
-        {/* PANEL: ALERTAS */}
-        {activeTab === 'alertas' && (
-          <div className="flex-1 flex flex-col space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
-              <div className="relative w-full sm:w-72">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar alerta, descripción..."
-                  className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 bg-white"
-                  value={searchAlerta}
-                  onChange={(e) => { setSearchAlerta(e.target.value); setPageAlerta(1); }}
-                />
-              </div>
-              <button
-                id="btn-export-alertas"
-                onClick={exportAlertas}
-                className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-600" /> Exportar CSV
-              </button>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-200 rounded-lg flex-1">
-              <table className="w-full text-left text-xs min-w-[900px]">
-                <thead className="bg-slate-100 text-slate-500 font-bold uppercase tracking-widest border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    {[
-                      { field: 'gravedad', label: 'Gravedad' },
-                      { field: 'tipo', label: 'Tipo de Alerta' },
-                      { field: 'archivo', label: 'Archivo' },
-                      { field: 'curso', label: 'Curso' },
-                      { field: 'codigoAsignatura', label: 'Código' },
-                      { field: 'nombreAsignatura', label: 'Asignatura' },
-                      { field: 'descripcion', label: 'Descripción' },
-                      { field: 'accionSugerida', label: 'Acción Sugerida' },
-                    ].map(h => (
-                      <th
-                        key={h.field}
-                        onClick={() => handleSort(h.field, sortFieldAlerta, setSortFieldAlerta, sortOrderAlerta, setSortOrderAlerta, setPageAlerta)}
-                        className="px-4 py-3 cursor-pointer hover:bg-slate-200 hover:text-slate-800 transition-colors"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {h.label}
-                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {processedAlertas.data.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-400 font-mono">
-                        NO SE ENCONTRARON ALERTAS PENDIENTES QUE AFECTEN ESTA SELECCIÓN.
-                      </td>
-                    </tr>
-                  ) : (
-                    processedAlertas.data.map(a => (
-                      <tr key={a.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
-                            a.gravedad === 'Crítica' ? 'bg-red-50 text-red-800 border-red-200' :
-                            a.gravedad === 'Alta' ? 'bg-orange-50 text-orange-800 border-orange-200' :
-                            'bg-yellow-50 text-yellow-800 border-yellow-200'
-                          }`}>
-                            {a.gravedad}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 font-bold text-slate-700">{a.tipo}</td>
-                        <td className="px-4 py-2.5 text-slate-400 truncate max-w-[120px]" title={a.archivo}>{a.archivo}</td>
-                        <td className="px-4 py-2.5 font-mono font-bold text-blue-700">
-                          {a.curso ? (
-                            <button onClick={() => onFilterCurso(a.curso)} className="hover:underline">{a.curso}</button>
-                          ) : (
-                            <span className="text-slate-400">Todos</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-slate-500">{a.codigoAsignatura || 'N/A'}</td>
-                        <td className="px-4 py-2.5 font-bold text-slate-600 truncate max-w-[120px]" title={a.nombreAsignatura}>{a.nombreAsignatura || 'N/A'}</td>
-                        <td className="px-4 py-2.5 text-slate-500 max-w-xs break-words">{a.descripcion}</td>
-                        <td className="px-4 py-2.5 font-bold text-slate-400 uppercase tracking-wide text-[10px]">{a.accionSugerida}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Mostrando {processedAlertas.data.length} de {processedAlertas.total} alertas
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={pageAlerta === 1}
-                  onClick={() => setPageAlerta(p => p - 1)}
-                  className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-mono font-bold px-3 py-1 bg-slate-100 rounded border border-slate-200 flex items-center">
-                  {pageAlerta} / {processedAlertas.totalPages}
-                </span>
-                <button
-                  disabled={pageAlerta === processedAlertas.totalPages}
-                  onClick={() => setPageAlerta(p => p + 1)}
-                  className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

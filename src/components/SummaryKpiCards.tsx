@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Users, Award, TrendingDown, ShieldAlert, BookOpen, Target,
-  HelpCircle, AlertTriangle, FileWarning, AlertCircle, Layers
+  HelpCircle, AlertTriangle, FileWarning, Layers
 } from 'lucide-react';
 
 export interface KpiDelta {
@@ -25,7 +25,6 @@ interface SummaryKpiCardsProps {
   asignaturaCritica: string;
   asignaturaCriticaPct: number;
   centroInteresCritico: string;
-  totalAlertas: number;
   periodoComparacion: string | null;
   deltas: {
     estudiantes?: KpiDelta;
@@ -50,7 +49,6 @@ interface SummaryKpiCardsProps {
   onLimpiarFiltrosAsignatura: () => void;
   onFiltrarAsignaturaCritica: () => void;
   onFiltrarCentroInteres: () => void;
-  onIrAlertas: () => void;
 }
 
 const DeltaBadge: React.FC<{ delta: KpiDelta | undefined; periodo: string | null }> = ({ delta, periodo }) => {
@@ -86,7 +84,6 @@ export const SummaryKpiCards: React.FC<SummaryKpiCardsProps> = ({
   asignaturaCritica,
   asignaturaCriticaPct,
   centroInteresCritico,
-  totalAlertas,
   periodoComparacion,
   deltas,
   filtrosActivos,
@@ -100,7 +97,6 @@ export const SummaryKpiCards: React.FC<SummaryKpiCardsProps> = ({
   onLimpiarFiltrosAsignatura,
   onFiltrarAsignaturaCritica,
   onFiltrarCentroInteres,
-  onIrAlertas,
 }) => {
   const cardBase = 'bg-white rounded-xl border shadow-sm transition-all cursor-pointer flex flex-col p-4 min-h-[120px]';
   const activeRing = 'ring-2 ring-blue-500 border-blue-300 shadow-md';
@@ -272,18 +268,6 @@ export const SummaryKpiCards: React.FC<SummaryKpiCardsProps> = ({
           <div className="min-w-0">
             <p className="text-[9px] font-bold text-slate-400 uppercase">CI más crítico</p>
             <p className="text-[10px] font-bold text-slate-700 truncate">{centroInteresCritico}</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={onIrAlertas}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:border-red-200 text-left transition-all"
-        >
-          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-          <div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase">Alertas de datos</p>
-            <p className="text-sm font-black font-mono text-slate-800">{totalAlertas}</p>
           </div>
         </button>
 

@@ -450,12 +450,6 @@ export const SummaryDashboard: React.FC = () => {
   const totalCursosEsperados = configuracion.cursosEsperados?.length ?? 0;
   const cursosPendientes = Math.max(0, totalCursosEsperados - totalCursosCargados);
 
-  const totalAlertasPendientes = useMemo(() => {
-    const staticCount = alertas.filter(a => a.estado === 'Pendiente').length;
-    const dynamicCount = (dataset?.alertasCalculo || []).length;
-    return staticCount + dynamicCount;
-  }, [alertas, dataset?.alertasCalculo]);
-
   // PROBLEM 2: Consolidate active qualifications to match all student/grade filters
   const calificacionesFiltradasParaStats = useMemo(() => {
     const arr: any[] = [];
@@ -916,41 +910,6 @@ export const SummaryDashboard: React.FC = () => {
     }));
   }, [filteredStudents]);
 
-  const alertasAfectanResumen = useMemo(() => {
-    const staticAlerts = alertas.filter(a => {
-      if (a.estado !== 'Pendiente') return false;
-      const matchCurso = filtroCurso === 'Todos' || a.curso === filtroCurso;
-      const matchNivel = filtroNivel === 'Todos' || a.nivel === filtroNivel;
-      const matchGrado = filtroGrado === 'Todos' || a.grado?.toString() === filtroGrado;
-      return matchCurso && matchNivel && matchGrado;
-    });
-
-    const dynamicAlerts: AlertaCalidad[] = (dataset?.alertasCalculo || []).map((a: any, idx: number) => {
-      // Find matching student's nivel and grado
-      const matchingStudent = dataset?.estudiantesCalculados?.find(e => e.estudianteNombre === a.estudiante);
-      return {
-        id: `dyn-alert-${idx}`,
-        gravedad: 'Crítica',
-        tipo: 'Inconsistencia de cálculo',
-        archivo: 'Análisis en Tiempo Real',
-        nivel: matchingStudent?.nivel,
-        grado: matchingStudent?.grado?.toString(),
-        curso: a.curso,
-        estudiante: a.estudiante,
-        descripcion: a.descripcion,
-        accionSugerida: 'Revisar si el estudiante tiene cargadas múltiples notas del mismo periodo o inconsistencias en Centros de Interés.',
-        estado: 'Pendiente' as const
-      };
-    }).filter(a => {
-      const matchCurso = filtroCurso === 'Todos' || a.curso === filtroCurso;
-      const matchNivel = filtroNivel === 'Todos' || a.nivel === filtroNivel;
-      const matchGrado = filtroGrado === 'Todos' || a.grado === filtroGrado;
-      return matchCurso && matchNivel && matchGrado;
-    });
-
-    return [...staticAlerts, ...dynamicAlerts];
-  }, [alertas, dataset?.alertasCalculo, dataset?.estudiantesCalculados, filtroCurso, filtroNivel, filtroGrado]);
-
   // AUTOMATED COMPREHENSIVE NARRATIVE TEXT
   const analysisText = useMemo(() => {
     const avg = promedioInstitucional !== null && promedioInstitucional !== undefined ? promedioInstitucional.toFixed(2) : 'N/A';
@@ -973,12 +932,6 @@ export const SummaryDashboard: React.FC = () => {
       text += `EN CENTROS DE INTERÉS, EL MAYOR FOCO DE PÉRDIDA SE REGISTRA EN ${ciCritSubject.toUpperCase()}. ESTE RESULTADO SE MUESTRA SEPARADO PORQUE LOS CENTROS DE INTERÉS TIENEN REGLAS ESPECIALES DE APLICABILIDAD EN BACHILLERATO Y NO DEBEN MEZCLARSE CON ASIGNATURAS ACADÉMICAS ORDINARIAS. `;
     }
 
-    if (totalAlertasPendientes > 0) {
-      text += `SE DETECTARON ${totalAlertasPendientes} ALERTAS DE CALIDAD DE DATOS PENDIENTES QUE PODRÍAN AFECTAR LA PRECISIÓN DEL ANÁLISIS. SE RECOMIENDA VALIDAR ESTOS REPORTES EN EL MÓDULO CORRESPONDIENTE. `;
-    } else {
-      text += `NO SE DETECTARON ALERTAS DE CALIDAD DE DATOS PENDIENTES PARA ESTA SELECCIÓN. `;
-    }
-
     // Course upload gaps alert
     const numConfigured = totalCursosEsperados;
     const numLoaded = totalCursosCargados;
@@ -987,7 +940,7 @@ export const SummaryDashboard: React.FC = () => {
     }
 
     return text;
-  }, [totalEstudiantes, promedioInstitucional, pctPromedioEnBajo, totalEstudiantesConPerdidas, totalRiesgoAltoCritico, asignaturaAcademicaMasCritica, centroInteresMasCritico, totalAlertasPendientes, configuracion, totalCursosCargados, totalCursosEsperados, cursosPendientes]);
+  }, [totalEstudiantes, promedioInstitucional, pctPromedioEnBajo, totalEstudiantesConPerdidas, totalRiesgoAltoCritico, asignaturaAcademicaMasCritica, centroInteresMasCritico, configuracion, totalCursosCargados, totalCursosEsperados, cursosPendientes]);
 
   const validacionReferencia = useMemo(() => {
     const puedeValidar = filtroTipo === 'Académicas' && filtroNivel === 'Todos' && filtroGrado === 'Todos' && filtroCurso === 'Todos'
@@ -1019,7 +972,7 @@ export const SummaryDashboard: React.FC = () => {
             Resumen Institucional Académico
           </h2>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-            Análisis unificado de rendimiento, pérdidas y alertas de Villa Campo Analytics.
+            Análisis unificado de rendimiento y pérdidas de Villa Campo Analytics.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -1128,25 +1081,6 @@ export const SummaryDashboard: React.FC = () => {
                 >
                   <span>3. Registros Excluidos</span>
                   <span className="text-[9px] text-slate-400 font-normal">registrosExcluidosDelCalculo.csv</span>
-                </button>
-                <button
-                  onClick={() => {
-                    const dynamicAlerts = dataset.alertasCalculo || [];
-                    const combined = [...alertas, ...dynamicAlerts].map((a: any) => ({
-                      Estudiante: a.estudiante || '-',
-                      Curso: a.curso || '-',
-                      Tipo: a.tipo || 'Alerta de calidad',
-                      Origen: a.origen || '-',
-                      Descripcion: a.descripcion || ''
-                    }));
-                    import('../utils/exporter').then(({ exportToCSV }) => {
-                      exportToCSV(combined, 'alertasDeCalculoYCalidad', ['Estudiante', 'Curso', 'Tipo', 'Origen', 'Descripcion']);
-                    });
-                  }}
-                  className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 border-t border-slate-100 font-bold flex flex-col"
-                >
-                  <span>4. Alertas</span>
-                  <span className="text-[9px] text-slate-400 font-normal">alertasDeCalculoYCalidad.csv</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1435,7 +1369,6 @@ export const SummaryDashboard: React.FC = () => {
         asignaturaCritica={asignaturaAcademicaMasCritica}
         asignaturaCriticaPct={asignaturaCriticaPct}
         centroInteresCritico={centroInteresMasCritico}
-        totalAlertas={alertasAfectanResumen.length}
         periodoComparacion={periodoComparacion}
         deltas={kpiDeltas}
         filtrosActivos={{
@@ -1461,10 +1394,6 @@ export const SummaryDashboard: React.FC = () => {
           if (centroInteresMasCritico !== 'Sin datos') {
             toggleFiltroAsignatura(centroInteresMasCritico, 'Centros de interés');
           }
-        }}
-        onIrAlertas={() => {
-          document.getElementById('summary-tables-section')?.scrollIntoView({ behavior: 'smooth' });
-          document.getElementById('tab-btn-alertas')?.click();
         }}
       />
 
@@ -1508,7 +1437,6 @@ export const SummaryDashboard: React.FC = () => {
         cursosResumen={cursosResumen}
         asignaturasResumen={asignaturasResumen}
         estudiantesPrioritarios={estudiantesPrioritarios}
-        alertasAfectanResumen={alertasAfectanResumen}
         onFilterCurso={(curso) => {
           applyCursoFromTable(curso);
           document.getElementById('summary-dashboard-root')?.scrollIntoView({ behavior: 'smooth' });

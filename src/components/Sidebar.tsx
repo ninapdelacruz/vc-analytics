@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, BarChart2, TrendingDown, Target, Users, BookOpen, Bookmark, ClipboardList, FileWarning, Settings, LogOut, X, Lock } from 'lucide-react';
+import { Home, BarChart2, TrendingDown, Target, Users, BookOpen, Bookmark, ClipboardList, FileWarning, Settings, X, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { isProtectedModule } from '../constants/protectedModules';
@@ -13,12 +13,10 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  adminUnlocked?: boolean;
-  onAdminLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  activeTab, setActiveTab, isOpen, setIsOpen, adminUnlocked, onAdminLogout,
+  activeTab, setActiveTab, isOpen, setIsOpen,
 }) => {
   const menuItems = [
     { id: 'inicio', label: 'Inicio', icon: Home },
@@ -49,9 +47,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       <div className="p-5 flex items-center justify-between gap-3 border-b border-blue-800/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center font-bold text-xl text-[#1B5E20] shadow-inner shrink-0">
-            VC
-          </div>
+          <img
+            src="/escudo-villa-campo.png"
+            alt="Escudo IE Villa Campo"
+            className="w-11 h-11 object-contain rounded-full bg-white p-0.5 shadow-md shrink-0"
+          />
           <div className="min-w-0">
             <h1 className="text-xs font-bold leading-tight uppercase tracking-widest truncate">VILLA CAMPO</h1>
             <p className="text-[10px] opacity-80 truncate">Análisis académico</p>
@@ -74,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {menuItems.map(item => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
-          const locked = isProtectedModule(item.id) && !adminUnlocked;
+          const locked = isProtectedModule(item.id);
           return (
             <button
               key={item.id}
@@ -105,21 +105,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="p-3 border-t border-blue-900 bg-blue-950/80">
-        {adminUnlocked ? (
-          <button
-            type="button"
-            title="Cerrar acceso administrativo"
-            onClick={onAdminLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors text-left"
-          >
-            <LogOut className="w-5 h-5 opacity-90 shrink-0" />
-            <span className="truncate">Cerrar acceso admin</span>
-          </button>
-        ) : (
-          <p className="px-3 py-2 text-[10px] text-blue-300/80 leading-relaxed">
-            Admin, Config y Calidad requieren código institucional.
-          </p>
-        )}
+        <p className="px-3 py-2 text-[10px] text-blue-300/80 leading-relaxed">
+          Admin, Config y Calidad requieren código institucional en cada ingreso.
+        </p>
       </div>
     </aside>
   );

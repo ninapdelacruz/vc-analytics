@@ -3,22 +3,36 @@ import { hashAccessCode } from './hash.js';
 
 let pool: mysql.Pool | null = null;
 
+function env(name: string, fallback = ''): string {
+  return (process.env[name] ?? fallback).trim().replace(/^["']|["']$/g, '');
+}
+
 export function getPool(): mysql.Pool {
   if (!pool) {
-    const url = process.env.DATABASE_URL?.trim();
+    const url = env('DATABASE_URL');
     if (url) {
       pool = mysql.createPool(url);
     } else {
+      /**
+       * En Hostinger, `localhost` a menudo resuelve a IPv6 (::1) y MySQL
+       * rechaza el usuario como 'user'@'::1'. Usar 127.0.0.1 fuerza IPv4
+       * y coincide con privilegios 'user'@'localhost'.
+       */
+      let host = env('MYSQL_HOST', '127.0.0.1');
+      if (host === 'localhost' || host === '::1') {
+        host = '127.0.0.1';
+      }
+
       pool = mysql.createPool({
-        host: process.env.MYSQL_HOST ?? 'localhost',
-        port: Number(process.env.MYSQL_PORT ?? 3306),
-        user: process.env.MYSQL_USER ?? 'u313974416_vc_analytics',
-        password: process.env.MYSQL_PASSWORD ?? '',
-        database: process.env.MYSQL_DATABASE ?? 'u313974416_vc_analytics',
+        host,
+        port: Number(env('MYSQL_PORT', '3306') || 3306),
+        user: env('MYSQL_USER', 'u313974416_vc_analytics'),
+        password: env('MYSQL_PASSWORD'),
+        database: env('MYSQL_DATABASE', 'u313974416_vc_analytics'),
         waitForConnections: true,
-        connectionLimit: 10,
+        connectionLimit: 5,
         charset: 'utf8mb4',
-        connectTimeout: 10000,
+        connectTimeout: 8000,
       });
     }
   }
@@ -34,21 +48,28 @@ export async function getMysqlError(): Promise<string | null> {
   }
 }
 
-/** Inserta el hash del código desde ACCESS_CODE si la tabla está vacía. */
+/**
+ * Si vc_codigo_acceso está vacía y existe ACCESS_CODE, inserta el hash en MySQL.
+ * No sobrescribe un código ya guardado en la base (MySQL es la fuente principal).
+ */
 export async function ensureAccessCodeFromEnv(): Promise<void> {
-  const envCode = process.env.ACCESS_CODE?.trim();
+  const envCode = env('ACCESS_CODE');
   if (!envCode) return;
 
-  const db = getPool();
-  const [rows] = await db.query<mysql.RowDataPacket[]>(
-    'SELECT codigo_hash FROM vc_codigo_acceso WHERE id = 1'
-  );
-  if (rows.length === 0) {
-    await db.query(
-      `INSERT INTO vc_codigo_acceso (id, codigo_hash, descripcion) VALUES (1, ?, ?)`,
-      [hashAccessCode(envCode), 'Inicializado desde ACCESS_CODE']
+  try {
+    const db = getPool();
+    const [rows] = await db.query<mysql.RowDataPacket[]>(
+      'SELECT codigo_hash FROM vc_codigo_acceso WHERE id = 1'
     );
-    console.log('[db] Código de acceso registrado desde ACCESS_CODE');
+    if (rows.length === 0) {
+      await db.query(
+        `INSERT INTO vc_codigo_acceso (id, codigo_hash, descripcion) VALUES (1, ?, ?)`,
+        [hashAccessCode(envCode), 'Inicializado desde ACCESS_CODE']
+      );
+      console.log('[db] Código de acceso registrado en MySQL desde ACCESS_CODE');
+    }
+  } catch (err) {
+    console.warn('[db] No se pudo sincronizar ACCESS_CODE en MySQL:', err instanceof Error ? err.message : err);
   }
 }
 

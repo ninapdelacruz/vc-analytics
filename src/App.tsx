@@ -9,7 +9,14 @@ import { DashboardSkeleton } from './components/DashboardSkeleton';
 import { AccessGate } from './components/AccessGate';
 import { useStore } from './store';
 import { isProtectedModule, ProtectedModule } from './constants/protectedModules';
-import { hasValidLocalSession, validateStoredSession, logoutAdminSession } from './utils/adminAccess';
+import { logoutAdminSession } from './utils/adminAccess';
+import {
+  hydrateFromServer,
+  pushStateToServer,
+  startStoreSync,
+  subscribeSyncStatus,
+  type SyncStatus,
+} from './utils/syncApi';
 
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const HomeDashboard = lazy(() => import('./pages/HomeDashboard').then(m => ({ default: m.HomeDashboard })));
@@ -28,27 +35,60 @@ const withSuspense = (node: React.ReactNode) => (
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('inicio');
-  const [adminUnlocked, setAdminUnlocked] = useState(hasValidLocalSession);
   const [gateModulo, setGateModulo] = useState<ProtectedModule | null>(null);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
   const { calificaciones } = useStore();
 
   useEffect(() => {
-    validateStoredSession().then(valid => setAdminUnlocked(valid));
+    startStoreSync();
+    const unsubStatus = subscribeSyncStatus((s, err) => {
+      setSyncStatus(s);
+      setSyncError(err);
+    });
+
+    const runHydrate = async () => {
+      setBootstrapping(true);
+      await hydrateFromServer();
+      setBootstrapping(false);
+    };
+
+    const persistApi = useStore.persist;
+    if (persistApi.hasHydrated()) {
+      void runHydrate();
+    } else {
+      const unsub = persistApi.onFinishHydration(() => {
+        void runHydrate();
+      });
+      return () => {
+        unsub();
+        unsubStatus();
+      };
+    }
+
+    return () => unsubStatus();
   }, []);
 
-  const navigateTo = useCallback((tab: string) => {
-    if (isProtectedModule(tab) && !adminUnlocked) {
+  /** Siempre pide código al entrar a módulos protegidos (cada vez). */
+  const navigateTo = useCallback(async (tab: string) => {
+    if (isProtectedModule(tab)) {
       setPendingTab(tab);
       setGateModulo(tab);
       return;
     }
+    if (isProtectedModule(activeTab)) {
+      await pushStateToServer();
+      await logoutAdminSession();
+    }
     setActiveTab(tab);
-  }, [adminUnlocked]);
+  }, [activeTab]);
 
-  const handleGateSuccess = useCallback(() => {
-    setAdminUnlocked(true);
+  const handleGateSuccess = useCallback(async () => {
     setGateModulo(null);
+    /* Sube datos locales al servidor (primera sincronización) y deja sesión activa en el módulo */
+    await pushStateToServer();
     if (pendingTab) {
       setActiveTab(pendingTab);
       setPendingTab(null);
@@ -59,14 +99,6 @@ export default function App() {
     setGateModulo(null);
     setPendingTab(null);
   }, []);
-
-  const handleAdminLogout = useCallback(async () => {
-    await logoutAdminSession();
-    setAdminUnlocked(false);
-    if (isProtectedModule(activeTab)) {
-      setActiveTab('inicio');
-    }
-  }, [activeTab]);
 
   const getTitle = () => {
     switch (activeTab) {
@@ -85,6 +117,10 @@ export default function App() {
   };
 
   const renderContent = () => {
+    if (bootstrapping) {
+      return <DashboardSkeleton />;
+    }
+
     if (activeTab === 'admin') return withSuspense(<AdminDashboard onNavigate={navigateTo} />);
     if (activeTab === 'config') return withSuspense(<ConfigDashboard />);
     if (activeTab === 'calidad') return withSuspense(<DataQualityDashboard />);
@@ -92,14 +128,15 @@ export default function App() {
     if (calificaciones.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-          <div className="w-20 h-20 bg-blue-50 text-[#004aad] rounded-full flex items-center justify-center mb-6">
-            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
+          <img
+            src="/escudo-villa-campo.png"
+            alt="Escudo IE Villa Campo"
+            className="w-20 h-20 object-contain mb-6"
+          />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">No hay datos cargados</h2>
           <p className="text-gray-500 max-w-md mx-auto mb-6">
-            Para ver los análisis, primero debes cargar los archivos de calificaciones en Excel.
+            Los datos se guardan en MySQL y se comparten entre dispositivos.
+            Entre a Administración, ingrese el código e importe los archivos Excel.
           </p>
           <button
             onClick={() => navigateTo('admin')}
@@ -107,6 +144,11 @@ export default function App() {
           >
             Ir a Administración
           </button>
+          {syncError && (
+            <p className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-md">
+              {syncError}
+            </p>
+          )}
         </div>
       );
     }
@@ -119,7 +161,6 @@ export default function App() {
       case 'estudiantes': return withSuspense(<StudentDashboard />);
       case 'cursos': return withSuspense(<CourseDashboard />);
       case 'asignaturas': return withSuspense(<SubjectDashboard />);
-      case 'calidad': return withSuspense(<DataQualityDashboard />);
       default: return <div className="p-8 text-center text-gray-500">Módulo en desarrollo: {activeTab}</div>;
     }
   };
@@ -130,8 +171,8 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={navigateTo}
         title={getTitle()}
-        adminUnlocked={adminUnlocked}
-        onAdminLogout={handleAdminLogout}
+        syncStatus={syncStatus}
+        syncError={syncError}
       >
         {renderContent()}
       </Layout>

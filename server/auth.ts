@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import type mysql from 'mysql2/promise';
 import { getPool, getDbStatus } from './db.js';
 import { hashAccessCode } from './hash.js';
@@ -7,10 +7,112 @@ import { hashAccessCode } from './hash.js';
 const SESSION_HOURS = Number(process.env.SESSION_HOURS ?? 8);
 const PROTECTED_MODULES = ['admin', 'config', 'calidad'] as const;
 
+/** Sesiones en memoria solo si MySQL no puede guardar la sesión. */
+const memorySessions = new Map<string, number>();
+
 function clientIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string') return forwarded.split(',')[0]?.trim() ?? null;
   return req.socket.remoteAddress ?? null;
+}
+
+function sessionExpiryDate(): Date {
+  return new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000);
+}
+
+function envAccessCode(): string {
+  return (process.env.ACCESS_CODE ?? '').trim();
+}
+
+/**
+ * Valida el código institucional.
+ * 1) MySQL (vc_codigo_acceso) — fuente principal
+ * 2) ACCESS_CODE en variables de entorno — respaldo
+ */
+async function verifyCode(codigo: string): Promise<{ valid: boolean; source: 'mysql' | 'env' | 'none' }> {
+  const input = codigo.trim();
+  if (!input) return { valid: false, source: 'none' };
+  const inputHash = hashAccessCode(input);
+
+  try {
+    const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+      'SELECT codigo_hash FROM vc_codigo_acceso WHERE id = 1'
+    );
+    if (rows.length > 0 && rows[0].codigo_hash) {
+      return {
+        valid: String(rows[0].codigo_hash).toLowerCase() === inputHash,
+        source: 'mysql',
+      };
+    }
+  } catch (err) {
+    console.warn('[auth] MySQL no disponible, usando ACCESS_CODE:', err instanceof Error ? err.message : err);
+  }
+
+  const fromEnv = envAccessCode();
+  if (fromEnv) {
+    return {
+      valid: hashAccessCode(fromEnv) === inputHash,
+      source: 'env',
+    };
+  }
+
+  return { valid: false, source: 'none' };
+}
+
+async function createSession(ip: string | null): Promise<{ token: string; expiresAt: string }> {
+  const token = crypto.randomUUID();
+  const expira = sessionExpiryDate();
+
+  try {
+    await getPool().query(
+      'INSERT INTO vc_sesion_acceso (token, expira_en, ip_origen) VALUES (?, ?, ?)',
+      [token, expira, ip]
+    );
+  } catch {
+    memorySessions.set(token, expira.getTime());
+  }
+
+  return { token, expiresAt: expira.toISOString() };
+}
+
+async function sessionValid(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+
+  try {
+    const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+      'SELECT token FROM vc_sesion_acceso WHERE token = ? AND expira_en > NOW()',
+      [token]
+    );
+    if (rows.length > 0) return true;
+  } catch {
+    /* fallback memoria */
+  }
+
+  const expires = memorySessions.get(token);
+  if (!expires) return false;
+  if (expires <= Date.now()) {
+    memorySessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function extractToken(req: Request): string | undefined {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.slice(7);
+  return req.headers['x-access-token'] as string | undefined;
+}
+
+/** Middleware: exige sesión válida (código institucional). */
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const valid = await sessionValid(extractToken(req));
+  if (!valid) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Sesión no válida. Ingrese el código en Administración e intente de nuevo.',
+    });
+  }
+  next();
 }
 
 async function logAttempt(modulo: string, exito: boolean, ip: string | null) {
@@ -20,43 +122,8 @@ async function logAttempt(modulo: string, exito: boolean, ip: string | null) {
       [modulo, exito ? 1 : 0, ip]
     );
   } catch {
-    /* auditoría no bloqueante */
+    /* opcional */
   }
-}
-
-async function verifyCodeHash(codigo: string): Promise<boolean> {
-  const db = getPool();
-  const [rows] = await db.query<mysql.RowDataPacket[]>(
-    'SELECT codigo_hash FROM vc_codigo_acceso WHERE id = 1'
-  );
-  if (rows.length === 0) return false;
-  return rows[0].codigo_hash === hashAccessCode(codigo);
-}
-
-async function createSession(ip: string | null): Promise<{ token: string; expiresAt: string }> {
-  const token = crypto.randomUUID();
-  const expira = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000);
-  await getPool().query(
-    'INSERT INTO vc_sesion_acceso (token, expira_en, ip_origen) VALUES (?, ?, ?)',
-    [token, expira, ip]
-  );
-  return { token, expiresAt: expira.toISOString() };
-}
-
-async function sessionValid(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
-  const db = getPool();
-  const [rows] = await db.query<mysql.RowDataPacket[]>(
-    'SELECT token FROM vc_sesion_acceso WHERE token = ? AND expira_en > NOW()',
-    [token]
-  );
-  return rows.length > 0;
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  return req.headers['x-access-token'] as string | undefined;
 }
 
 export async function postVerify(req: Request, res: Response) {
@@ -69,10 +136,16 @@ export async function postVerify(req: Request, res: Response) {
   }
 
   try {
-    const valid = await verifyCodeHash(codigo);
-    await logAttempt(modulo, valid, ip);
+    const { valid, source } = await verifyCode(codigo);
+    void logAttempt(modulo, valid, ip);
 
     if (!valid) {
+      if (source === 'none') {
+        return res.status(503).json({
+          ok: false,
+          error: 'No hay código configurado en MySQL ni en ACCESS_CODE.',
+        });
+      }
       return res.status(401).json({ ok: false, error: 'Código incorrecto.' });
     }
 
@@ -82,23 +155,14 @@ export async function postVerify(req: Request, res: Response) {
       token: session.token,
       expiresAt: session.expiresAt,
       modulos: PROTECTED_MODULES,
+      source,
     });
   } catch (err) {
     console.error('[auth] verify error', err);
-    const msg = err instanceof Error ? err.message : '';
-    if (msg.includes("doesn't exist") || msg.includes('no such table')) {
-      return res.status(503).json({
-        ok: false,
-        error: 'Faltan tablas MySQL. Importe database/schema.sql en phpMyAdmin.',
-      });
-    }
-    if (msg.includes('Access denied')) {
-      return res.status(503).json({
-        ok: false,
-        error: 'Credenciales MySQL incorrectas. Revise MYSQL_USER y MYSQL_PASSWORD en hPanel.',
-      });
-    }
-    return res.status(503).json({ ok: false, error: 'No se pudo validar el código. Revise la conexión MySQL.' });
+    return res.status(500).json({
+      ok: false,
+      error: 'Error interno al validar el código. Intente de nuevo.',
+    });
   }
 }
 
@@ -115,6 +179,7 @@ export async function getSession(req: Request, res: Response) {
 export async function deleteSession(req: Request, res: Response) {
   const token = extractToken(req);
   if (token) {
+    memorySessions.delete(token);
     try {
       await getPool().query('DELETE FROM vc_sesion_acceso WHERE token = ?', [token]);
     } catch { /* ignore */ }
@@ -124,18 +189,15 @@ export async function deleteSession(req: Request, res: Response) {
 
 export async function getHealth(_req: Request, res: Response) {
   const status = await getDbStatus();
-  if (!status.connected) {
-    return res.status(503).json({
-      ok: false,
-      mysql: false,
-      error: status.error,
-      hint: 'Verifique MYSQL_* en hPanel y que schema.sql esté importado. Luego reinicie la app.',
-    });
-  }
-  return res.json({
+  const hasEnvCode = Boolean(envAccessCode());
+  const codigoConfigurado = status.codigoConfigurado || hasEnvCode;
+
+  return res.status(200).json({
     ok: true,
-    mysql: true,
-    codigoConfigurado: status.codigoConfigurado,
-    tablasOk: status.tablasOk,
+    api: true,
+    mysql: status.connected,
+    mysqlError: status.error,
+    codigoConfigurado,
+    authMode: status.codigoConfigurado ? 'mysql' : hasEnvCode ? 'env' : 'none',
   });
 }
