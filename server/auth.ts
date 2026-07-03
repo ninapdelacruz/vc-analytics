@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import type mysql from 'mysql2/promise';
-import { getPool } from './db.js';
+import { getPool, getDbStatus } from './db.js';
 import { hashAccessCode } from './hash.js';
 
 const SESSION_HOURS = Number(process.env.SESSION_HOURS ?? 8);
@@ -85,6 +85,19 @@ export async function postVerify(req: Request, res: Response) {
     });
   } catch (err) {
     console.error('[auth] verify error', err);
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes("doesn't exist") || msg.includes('no such table')) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Faltan tablas MySQL. Importe database/schema.sql en phpMyAdmin.',
+      });
+    }
+    if (msg.includes('Access denied')) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Credenciales MySQL incorrectas. Revise MYSQL_USER y MYSQL_PASSWORD en hPanel.',
+      });
+    }
     return res.status(503).json({ ok: false, error: 'No se pudo validar el código. Revise la conexión MySQL.' });
   }
 }
@@ -110,18 +123,19 @@ export async function deleteSession(req: Request, res: Response) {
 }
 
 export async function getHealth(_req: Request, res: Response) {
-  try {
-    const db = getPool();
-    await db.query('SELECT 1');
-    const [codeRow] = await db.query<mysql.RowDataPacket[]>(
-      'SELECT id FROM vc_codigo_acceso WHERE id = 1'
-    );
-    return res.json({
-      ok: true,
-      mysql: true,
-      codigoConfigurado: codeRow.length > 0,
+  const status = await getDbStatus();
+  if (!status.connected) {
+    return res.status(503).json({
+      ok: false,
+      mysql: false,
+      error: status.error,
+      hint: 'Verifique MYSQL_* en hPanel y que schema.sql esté importado. Luego reinicie la app.',
     });
-  } catch {
-    return res.status(503).json({ ok: false, mysql: false });
   }
+  return res.json({
+    ok: true,
+    mysql: true,
+    codigoConfigurado: status.codigoConfigurado,
+    tablasOk: status.tablasOk,
+  });
 }
