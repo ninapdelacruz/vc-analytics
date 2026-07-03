@@ -42,8 +42,8 @@ async function start() {
     console.log('[server] MySQL conectado');
   }
 
-  app.listen(PORT, () => {
-    console.log(`[server] Villa Campo API en http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[server] Villa Campo API escuchando en puerto ${PORT}`);
   });
 }
 

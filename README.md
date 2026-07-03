@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Villa Campo Analytics
 
-# Run and deploy your AI Studio app
+Dashboard académico institucional (React + Express + MySQL).
 
-This contains everything you need to run your app locally.
+## Desarrollo local
 
-View your app in AI Studio: https://ai.studio/apps/920db79b-4382-4792-b25e-08507c18c7a7
+```bash
+npm install
+cp .env.example .env   # editar credenciales MySQL y ACCESS_CODE
+mysql -u root -p < database/schema.sql   # o importar en phpMyAdmin
+npm run server   # terminal 1 — API puerto 3001
+npm run dev      # terminal 2 — frontend puerto 3000
+```
 
-## Run Locally
+## Despliegue en Hostinger (Node.js)
 
-**Prerequisites:**  Node.js
+### 1. Variables de entorno (hPanel)
 
+| Variable | Valor |
+|----------|--------|
+| `MYSQL_HOST` | `localhost` |
+| `MYSQL_PORT` | `3306` |
+| `MYSQL_USER` | `u313974416_vc_analytics` |
+| `MYSQL_PASSWORD` | *(tu contraseña)* |
+| `MYSQL_DATABASE` | `u313974416_vc_analytics` |
+| `ACCESS_CODE` | *(código institucional)* |
+| `SESSION_HOURS` | `8` |
+| `CORS_ORIGIN` | `https://analisisacademico.ievillacampo10.edu.co` |
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+No hace falta definir `PORT`: Hostinger la asigna automáticamente.
+
+### 2. Base de datos
+
+Importar `database/schema.sql` en phpMyAdmin sobre la BD `u313974416_vc_analytics`.
+
+### 3. Comandos en el panel Node.js de Hostinger
+
+| Campo | Valor |
+|-------|--------|
+| **Build command** | `npm install && npm run build` |
+| **Start command** | `npm start` |
+| **Node version** | 20 o superior |
+| **Application root** | raíz del repositorio |
+
+### 4. Verificar
+
+- `https://tudominio.com/api/health` → debe responder `{ "ok": true, "mysql": true }`
+- Abrir la app y probar acceso a Administración con `ACCESS_CODE`
+
+### Notas
+
+- El build compila el frontend (`dist/`) y el servidor (`dist-server/index.js`).
+- `npm start` usa Node puro (no requiere `tsx` en producción).
+- Los avisos `deprecated` y `dynamic import` del build son normales y no impiden el despliegue.
