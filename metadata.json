@@ -1,0 +1,6 @@
+{
+  "name": "Villa Campo Analytics",
+  "description": "Herramienta institucional para el análisis de calidad de datos y alerta temprana de riesgo académico de Villa Campo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
