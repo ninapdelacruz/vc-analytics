@@ -4,19 +4,19 @@
   "version": "1.0.0",
   "description": "Villa Campo Analytics — dashboard académico con Express + Vite",
   "type": "module",
-  "main": "dist/server.js",
+  "main": "index.js",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "tsx server/index.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external",
     "build": "vite build && npm run build:server && node scripts/verify-build.mjs",
     "preview": "vite preview",
-    "start": "node dist/server.js",
+    "start": "node index.js",
     "clean": "rm -rf dist dist-server app.js",
     "lint": "tsc --noEmit"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

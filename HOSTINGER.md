@@ -5,10 +5,10 @@
 | Campo | Valor |
 |-------|--------|
 | **Estructura / Framework** | Express |
-| **Node.js** | **20.x** (no 22.x) |
+| **Node.js** | 20.x o 22.x (ambos funcionan) |
 | **Build command** | `npm run build` |
 | **Start command** | `npm start` |
-| **Entry file** | `dist/server.js` |
+| **Entry file** | `index.js` |
 | **Output directory** | `dist` |
 
 Todo (frontend + servidor) queda dentro de `dist/` tras el build.
