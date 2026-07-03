@@ -1,23 +1,15 @@
 -- =============================================================================
 -- Villa Campo Analytics — Esquema MySQL 8.0+
 -- =============================================================================
--- Uso:
---   mysql -u root -p < database/schema.sql
+-- Hosting Hostinger:
+--   1. Crear la BD u313974416_vc_analytics en hPanel (si no existe).
+--   2. Abrir phpMyAdmin → seleccionar esa BD → Importar este archivo.
 --
 -- Acceso restringido (sin usuarios/roles): un único código institucional
 -- protege Administración, Configuración y Calidad de datos.
 -- =============================================================================
 
-CREATE DATABASE IF NOT EXISTS villa_campo_analytics
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE villa_campo_analytics;
-
--- Usuario de aplicación (ajuste contraseña en producción)
-CREATE USER IF NOT EXISTS 'vc_app'@'localhost' IDENTIFIED BY 'CambiarClaveSegura123!';
-GRANT SELECT, INSERT, UPDATE, DELETE ON villa_campo_analytics.* TO 'vc_app'@'localhost';
-FLUSH PRIVILEGES;
+USE u313974416_vc_analytics;
 
 -- -----------------------------------------------------------------------------
 -- Código de acceso a módulos restringidos (una sola fila, id = 1)
@@ -72,7 +64,6 @@ CREATE TABLE IF NOT EXISTS vc_configuracion_academica (
 
 -- -----------------------------------------------------------------------------
 -- Estado analítico institucional (snapshot JSON por año escolar)
--- Permite persistir calificaciones/alertas cargadas desde Administración.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS vc_estado_analitico (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -98,9 +89,3 @@ CREATE TABLE IF NOT EXISTS vc_archivo_carga (
   cargado_en      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_vc_archivo_anio (anio_escolar, periodo)
 ) ENGINE=InnoDB;
-
--- Evento opcional: limpiar sesiones expiradas cada hora
--- (requiere event_scheduler = ON)
--- CREATE EVENT IF NOT EXISTS ev_limpiar_sesiones
--- ON SCHEDULE EVERY 1 HOUR
--- DO DELETE FROM vc_sesion_acceso WHERE expira_en < NOW();

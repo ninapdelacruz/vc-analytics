@@ -8,9 +8,9 @@ export function getPool(): mysql.Pool {
     pool = mysql.createPool({
       host: process.env.MYSQL_HOST ?? 'localhost',
       port: Number(process.env.MYSQL_PORT ?? 3306),
-      user: process.env.MYSQL_USER ?? 'vc_app',
+      user: process.env.MYSQL_USER ?? 'u313974416_vc_analytics',
       password: process.env.MYSQL_PASSWORD ?? '',
-      database: process.env.MYSQL_DATABASE ?? 'villa_campo_analytics',
+      database: process.env.MYSQL_DATABASE ?? 'u313974416_vc_analytics',
       waitForConnections: true,
       connectionLimit: 10,
       charset: 'utf8mb4',
