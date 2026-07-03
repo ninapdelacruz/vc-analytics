@@ -55,26 +55,12 @@ function isRicher(
   return a.archivos > b.archivos || (a.archivos === b.archivos && a.califs > b.califs);
 }
 
-/** Escucha cambios del store y los guarda en MySQL si hay sesión admin. */
+/**
+ * @deprecated La sincronización automática global se desactivó.
+ * Solo Admin (carga de archivos / botón) y Config (guardar) escriben en el servidor.
+ */
 export function startStoreSync() {
-  if (subscribed) return;
   subscribed = true;
-  useStore.subscribe((state, prev) => {
-    if (hydrating) return;
-    if (!getStoredSession()) return;
-
-    const dataChanged =
-      state.calificaciones !== prev.calificaciones ||
-      state.alertas !== prev.alertas ||
-      state.archivosCargados !== prev.archivosCargados ||
-      state.intervenciones !== prev.intervenciones ||
-      state.periodoActivo !== prev.periodoActivo;
-
-    const configChanged = state.configuracion !== prev.configuracion;
-
-    if (configChanged) schedulePushConfig();
-    else if (dataChanged) schedulePushToServer(300);
-  });
 }
 
 /** Carga estado desde MySQL. Si este dispositivo tiene MÁS datos, los conserva y sube al servidor. */
@@ -106,19 +92,11 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
       const e = estadoData.estado;
       const serverR = stateRichness(e);
 
-      /* Este navegador tiene más archivos/notas que el servidor → subir, no pisar */
+      /* Este navegador tiene más datos que el servidor: no pisar; sincronizar desde Admin. */
       if (localR.archivos > 0 && isRicher(localR, serverR)) {
-        hydrating = false;
-        if (getStoredSession()) {
-          const pushed = await pushStateToServer();
-          if (pushed) {
-            notify('synced');
-            return { fromServer: false, registros: localR.califs };
-          }
-        }
         notify(
           'pending',
-          `Este dispositivo tiene ${localR.archivos} archivos y el servidor ${serverR.archivos}. Entre a Administración para sincronizar.`
+          `Este dispositivo tiene ${localR.archivos} archivos y el servidor ${serverR.archivos}. Abra Administración y pulse «Sincronizar ahora».`
         );
         return { fromServer: false, registros: localR.califs };
       }
@@ -134,18 +112,10 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
       return { fromServer: true, registros: serverR.califs };
     }
 
-    /* Servidor vacío: subir locales si hay sesión */
-    if (localR.califs > 0 && getStoredSession()) {
-      hydrating = false;
-      const pushed = await pushStateToServer();
-      notify(pushed ? 'synced' : 'error', pushed ? null : lastError);
-      return { fromServer: false, registros: localR.califs };
-    }
-
     if (localR.califs > 0) {
       notify(
         'pending',
-        `Hay ${localR.archivos} archivos solo en este dispositivo. Entre a Administración para subirlos al servidor.`
+        `Hay ${localR.archivos} archivos solo en este dispositivo. Abra Administración y pulse «Sincronizar ahora».`
       );
       return { fromServer: false, registros: localR.califs };
     }

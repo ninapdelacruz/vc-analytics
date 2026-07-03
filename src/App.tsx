@@ -12,8 +12,6 @@ import { isProtectedModule, ProtectedModule } from './constants/protectedModules
 import { logoutAdminSession } from './utils/adminAccess';
 import {
   hydrateFromServer,
-  pushStateToServer,
-  startStoreSync,
   subscribeSyncStatus,
   type SyncStatus,
 } from './utils/syncApi';
@@ -44,7 +42,7 @@ export default function App() {
   const { calificaciones } = useStore();
 
   useEffect(() => {
-    startStoreSync();
+    /* Solo lectura al abrir la app. La escritura es solo desde Admin/Config. */
     const unsubStatus = subscribeSyncStatus((s, err) => {
       setSyncStatus(s);
       setSyncError(err);
@@ -72,24 +70,21 @@ export default function App() {
     return () => unsubStatus();
   }, []);
 
-  /** Siempre pide código al entrar a módulos protegidos (cada vez). */
-  const navigateTo = useCallback(async (tab: string) => {
+  /** Navegación inmediata. Sync solo ocurre dentro de Admin/Config al guardar datos. */
+  const navigateTo = useCallback((tab: string) => {
     if (isProtectedModule(tab)) {
       setPendingTab(tab);
       setGateModulo(tab);
       return;
     }
     if (isProtectedModule(activeTab)) {
-      await pushStateToServer();
-      await logoutAdminSession();
+      void logoutAdminSession();
     }
     setActiveTab(tab);
   }, [activeTab]);
 
-  const handleGateSuccess = useCallback(async () => {
+  const handleGateSuccess = useCallback(() => {
     setGateModulo(null);
-    /* Sube datos locales al servidor (primera sincronización) y deja sesión activa en el módulo */
-    await pushStateToServer();
     if (pendingTab) {
       setActiveTab(pendingTab);
       setPendingTab(null);

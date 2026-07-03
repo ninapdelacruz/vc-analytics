@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { Save, Settings, AlertTriangle, Upload, Download, Plus, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 import { NivelDesempeno, OperadorDesempeno, DiccionarioAsignatura, AplicabilidadGrado } from '../types';
 import { cn } from '../components/Sidebar';
+import { pushConfigToServer } from '../utils/syncApi';
 
 export const ConfigDashboard: React.FC = () => {
   const { configuracion, setConfiguracion, revalidarDatos } = useStore();
@@ -15,9 +16,10 @@ export const ConfigDashboard: React.FC = () => {
     setSaved(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setConfiguracion(form);
     revalidarDatos();
+    await pushConfigToServer();
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -581,6 +583,7 @@ export const ConfigDashboard: React.FC = () => {
                         setConfiguracion(json);
                         setForm(json);
                         revalidarDatos();
+                        void pushConfigToServer();
                         setSaved(true);
                         setTimeout(() => setSaved(false), 3000);
                       } catch (error) {
