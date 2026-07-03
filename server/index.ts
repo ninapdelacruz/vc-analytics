@@ -12,6 +12,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 function resolveDistPath(): string {
   const candidates = [
+    __dirname,
     path.join(process.cwd(), 'dist'),
     path.join(__dirname, 'dist'),
     path.join(__dirname, '..', 'dist'),
@@ -33,10 +34,11 @@ app.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN ?? '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Access-Token');
+  if (_req.method === 'OPTIONS' && _req.path.startsWith('/api')) {
+    return res.sendStatus(204);
+  }
   next();
 });
-
-app.options('/api/*', (_req, res) => res.sendStatus(204));
 
 app.get('/api/health', getHealth);
 app.post('/api/auth/verify', postVerify);

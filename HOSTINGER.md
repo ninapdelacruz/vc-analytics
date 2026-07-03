@@ -1,19 +1,17 @@
-# Configuración de despliegue — Hostinger Node.js
+# Despliegue Hostinger — Villa Campo Analytics
 
-> Hostinger auto-detecta **Vite** y trata la app como sitio estático.
-> Debes cambiar el framework a **Express.js** para que arranque el servidor API.
-
-## hPanel → Settings and redeploy
+## Configuración en hPanel (Settings and redeploy)
 
 | Campo | Valor |
 |-------|--------|
-| **Framework** | **Express.js** (no Vite) |
-| **Node.js version** | 20.x |
-| **Install command** | `npm install` |
+| **Estructura / Framework** | Express |
+| **Node.js** | **20.x** (no 22.x) |
 | **Build command** | `npm run build` |
 | **Start command** | `npm start` |
-| **Entry file** | `app.js` |
+| **Entry file** | `dist/server.js` |
 | **Output directory** | `dist` |
+
+Todo (frontend + servidor) queda dentro de `dist/` tras el build.
 
 ## Variables de entorno
 
@@ -23,19 +21,18 @@ MYSQL_PORT=3306
 MYSQL_USER=u313974416_vc_analytics
 MYSQL_PASSWORD=tu_contraseña
 MYSQL_DATABASE=u313974416_vc_analytics
-ACCESS_CODE=tu_codigo_secreto
+ACCESS_CODE=tu_codigo
 SESSION_HOURS=8
 CORS_ORIGIN=https://analisisacademico.ievillacampo10.edu.co
 ```
 
-No definas `PORT` manualmente: Hostinger la asigna sola.
+## Verificación
 
-## Verificación post-deploy
+`https://analisisacademico.ievillacampo10.edu.co/api/health`
 
-1. `https://analisisacademico.ievillacampo10.edu.co/api/health`
-2. Debe responder: `{"ok":true,"mysql":true,"codigoConfigurado":true}`
+## Si el build termina OK pero marca "Falló la compilación"
 
-## Si el build termina OK pero falla el deploy
-
-Revisa el log **después** de `build:server` — ahí aparece el error de arranque.
-Causa habitual: framework en **Vite** en lugar de **Express.js**.
+1. Cambia Node de **22.x** a **20.x**
+2. Entry file: `dist/server.js` (no `app.js`)
+3. Output directory: `dist`
+4. Revisa el log **después** de `[postbuild] OK` — ahí está el error de arranque
