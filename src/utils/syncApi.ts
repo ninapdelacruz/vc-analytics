@@ -2,10 +2,11 @@ import { useStore } from '../store';
 import { getStoredSession } from './adminAccess';
 import type { ConfiguracionAcademica } from '../types';
 
-export type SyncStatus = 'idle' | 'loading' | 'saving' | 'synced' | 'error' | 'offline';
+export type SyncStatus = 'idle' | 'loading' | 'saving' | 'synced' | 'error' | 'offline' | 'pending';
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let syncing = false;
+let pendingPush = false;
 let hydrating = false;
 let lastError: string | null = null;
 let listeners = new Set<(s: SyncStatus, err: string | null) => void>();
@@ -37,6 +38,23 @@ function authHeaders(): HeadersInit {
   return headers;
 }
 
+function stateRichness(s: {
+  archivosCargados?: unknown[];
+  calificaciones?: unknown[];
+}) {
+  return {
+    archivos: s.archivosCargados?.length ?? 0,
+    califs: s.calificaciones?.length ?? 0,
+  };
+}
+
+function isRicher(
+  a: { archivos: number; califs: number },
+  b: { archivos: number; califs: number }
+) {
+  return a.archivos > b.archivos || (a.archivos === b.archivos && a.califs > b.califs);
+}
+
 /** Escucha cambios del store y los guarda en MySQL si hay sesión admin. */
 export function startStoreSync() {
   if (subscribed) return;
@@ -55,11 +73,11 @@ export function startStoreSync() {
     const configChanged = state.configuracion !== prev.configuracion;
 
     if (configChanged) schedulePushConfig();
-    else if (dataChanged) schedulePushToServer();
+    else if (dataChanged) schedulePushToServer(300);
   });
 }
 
-/** Carga estado y configuración desde MySQL (cualquier dispositivo). */
+/** Carga estado desde MySQL. Si este dispositivo tiene MÁS datos, los conserva y sube al servidor. */
 export async function hydrateFromServer(): Promise<{ fromServer: boolean; registros: number }> {
   hydrating = true;
   notify('loading');
@@ -70,7 +88,7 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
     ]);
 
     if (!estadoRes.ok && estadoRes.status === 503) {
-      notify('offline', 'MySQL no disponible');
+      notify('offline', 'Servidor de datos no disponible');
       return { fromServer: false, registros: 0 };
     }
 
@@ -81,8 +99,30 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
       useStore.setState({ configuracion: configData.configuracion as ConfiguracionAcademica });
     }
 
+    const local = useStore.getState();
+    const localR = stateRichness(local);
+
     if (estadoData.ok && !estadoData.empty && estadoData.estado) {
       const e = estadoData.estado;
+      const serverR = stateRichness(e);
+
+      /* Este navegador tiene más archivos/notas que el servidor → subir, no pisar */
+      if (localR.archivos > 0 && isRicher(localR, serverR)) {
+        hydrating = false;
+        if (getStoredSession()) {
+          const pushed = await pushStateToServer();
+          if (pushed) {
+            notify('synced');
+            return { fromServer: false, registros: localR.califs };
+          }
+        }
+        notify(
+          'pending',
+          `Este dispositivo tiene ${localR.archivos} archivos y el servidor ${serverR.archivos}. Entre a Administración para sincronizar.`
+        );
+        return { fromServer: false, registros: localR.califs };
+      }
+
       useStore.setState({
         calificaciones: e.calificaciones ?? [],
         alertas: e.alertas ?? [],
@@ -91,15 +131,23 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
         periodoActivo: e.periodoActivo ?? 'P1',
       });
       notify('synced');
-      return { fromServer: true, registros: (e.calificaciones ?? []).length };
+      return { fromServer: true, registros: serverR.califs };
     }
 
-    /* Servidor vacío: si hay datos locales y sesión admin, subirlos */
-    const local = useStore.getState();
-    if (local.calificaciones.length > 0 && getStoredSession()) {
+    /* Servidor vacío: subir locales si hay sesión */
+    if (localR.califs > 0 && getStoredSession()) {
+      hydrating = false;
       const pushed = await pushStateToServer();
       notify(pushed ? 'synced' : 'error', pushed ? null : lastError);
-      return { fromServer: false, registros: local.calificaciones.length };
+      return { fromServer: false, registros: localR.califs };
+    }
+
+    if (localR.califs > 0) {
+      notify(
+        'pending',
+        `Hay ${localR.archivos} archivos solo en este dispositivo. Entre a Administración para subirlos al servidor.`
+      );
+      return { fromServer: false, registros: localR.califs };
     }
 
     notify('idle');
@@ -112,18 +160,27 @@ export async function hydrateFromServer(): Promise<{ fromServer: boolean; regist
   }
 }
 
-/** Guarda el estado actual en MySQL (requiere sesión admin). */
+/**
+ * Guarda el estado actual en MySQL (requiere sesión admin).
+ * Si ya hay un guardado en curso, encola otro al terminar (no pierde cargas múltiples).
+ */
 export async function pushStateToServer(): Promise<boolean> {
-  if (syncing) return false;
+  if (syncing) {
+    pendingPush = true;
+    return false;
+  }
+
   const session = getStoredSession();
   if (!session) {
-    lastError = 'Ingrese a Administración para sincronizar con MySQL.';
+    lastError = 'Ingrese a Administración para sincronizar.';
     notify('error', lastError);
     return false;
   }
 
   syncing = true;
   notify('saving');
+  let ok = false;
+
   try {
     const state = useStore.getState();
     const res = await fetch('/api/data/estado', {
@@ -137,21 +194,39 @@ export async function pushStateToServer(): Promise<boolean> {
         periodoActivo: state.periodoActivo,
       }),
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      lastError = typeof data.error === 'string' ? data.error : 'No se pudo guardar en MySQL';
+
+    let data: { ok?: boolean; error?: string } = {};
+    try {
+      data = await res.json();
+    } catch {
+      lastError = `Error del servidor (${res.status})`;
       notify('error', lastError);
-      return false;
+      ok = false;
+      data = {};
     }
-    notify('synced');
-    return true;
+
+    if (res.ok && data.ok) {
+      ok = true;
+      notify('synced');
+    } else {
+      lastError = typeof data.error === 'string' ? data.error : 'No se pudo guardar en el servidor';
+      notify('error', lastError);
+      ok = false;
+    }
   } catch (err) {
     lastError = err instanceof Error ? err.message : 'Error de red al guardar';
     notify('error', lastError);
-    return false;
+    ok = false;
   } finally {
     syncing = false;
   }
+
+  if (pendingPush) {
+    pendingPush = false;
+    const again = await pushStateToServer();
+    return again || ok;
+  }
+  return ok;
 }
 
 export async function pushConfigToServer(): Promise<boolean> {
@@ -170,16 +245,15 @@ export async function pushConfigToServer(): Promise<boolean> {
   }
 }
 
-/** Guarda en MySQL con debounce (tras cargar/borrar archivos, etc.). */
-export function schedulePushToServer(delayMs = 600) {
+/** Guarda en el servidor con debounce (cargas múltiples en lote). */
+export function schedulePushToServer(delayMs = 400) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     void pushStateToServer();
   }, delayMs);
 }
 
-/** Tras cambios de configuración académica. */
-export function schedulePushConfig(delayMs = 600) {
+export function schedulePushConfig(delayMs = 400) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     void pushConfigToServer();

@@ -113,6 +113,8 @@ export const Layout: React.FC<LayoutProps> = ({
                 <><Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /><span className="text-blue-700">{syncStatus === 'saving' ? 'Guardando' : 'Cargando'}</span></>
               ) : syncStatus === 'synced' ? (
                 <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700">Sincronizado</span></>
+              ) : syncStatus === 'pending' ? (
+                <><CloudOff className="w-3.5 h-3.5 text-amber-600" /><span className="text-amber-700">Pendiente</span></>
               ) : syncStatus === 'offline' || syncStatus === 'error' ? (
                 <><CloudOff className="w-3.5 h-3.5 text-amber-600" /><span className="text-amber-700">Local</span></>
               ) : (

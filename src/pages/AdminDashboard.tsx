@@ -1,8 +1,9 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { Upload, FileWarning, CheckCircle, AlertTriangle, Eye, Trash2, Download, FileText, ExternalLink, AlertCircle, RefreshCw, PlusCircle, X, ChevronRight, HelpCircle } from 'lucide-react';
+import { Upload, FileWarning, CheckCircle, AlertTriangle, Eye, Trash2, Download, FileText, ExternalLink, AlertCircle, RefreshCw, PlusCircle, X, ChevronRight, HelpCircle, CloudUpload } from 'lucide-react';
 import { useStore } from '../store';
 import { processExcelFile, parseFileName, detectActivePeriod } from '../utils/excelParser';
 import { cn } from '../components/Sidebar';
+import { pushStateToServer, pushConfigToServer } from '../utils/syncApi';
 
 interface Props {
   onNavigate?: (tab: string) => void;
@@ -14,6 +15,8 @@ export const AdminDashboard: React.FC<Props> = ({ onNavigate }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [lastUploadError, setLastUploadError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Replacement Confirmation Modal State
   const [duplicateFileToProcess, setDuplicateFileToProcess] = useState<{ file: File; existingName: string; meta: any } | null>(null);
@@ -63,13 +66,20 @@ export const AdminDashboard: React.FC<Props> = ({ onNavigate }) => {
         periodoDetectado: filePeriod
       }, fileAlerts);
 
-      // Update and revalidate
-      setTimeout(() => {
-        revalidarDatos();
-        const currentCalifs = useStore.getState().calificaciones;
-        const newActivePeriod = detectActivePeriod(currentCalifs);
-        setPeriodoActivo(newActivePeriod);
-      }, 50);
+      // Update and revalidate, then force save to MySQL
+      await new Promise(r => setTimeout(r, 80));
+      revalidarDatos();
+      const currentCalifs = useStore.getState().calificaciones;
+      const newActivePeriod = detectActivePeriod(currentCalifs);
+      setPeriodoActivo(newActivePeriod);
+
+      setUploadStatus(`Guardando ${file.name} en el servidor...`);
+      const saved = await pushStateToServer();
+      if (!saved) {
+        setLastUploadError(
+          `Archivo procesado en este navegador, pero no se guardó en el servidor. Use «Sincronizar ahora».`
+        );
+      }
 
     } catch (error: any) {
       setLastUploadError(`Error en ${file.name}: ${error.message}`);
@@ -239,8 +249,47 @@ export const AdminDashboard: React.FC<Props> = ({ onNavigate }) => {
 
   const hasFiles = archivosCargados.length > 0;
 
+  const handleForceSync = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    setLastUploadError(null);
+    try {
+      const configOk = await pushConfigToServer();
+      const dataOk = await pushStateToServer();
+      if (dataOk) {
+        setSyncMessage(
+          `Sincronizado: ${archivosCargados.length} archivos y ${calificaciones.length.toLocaleString()} registros enviados al servidor.`
+        );
+      } else {
+        setLastUploadError('No se pudo sincronizar. Verifique la conexión e intente de nuevo.');
+      }
+      void configOk;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div id="admin-panel-container" className="space-y-6 max-w-7xl mx-auto">
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+        <p className="text-xs text-blue-800 leading-relaxed">
+          Los datos de este panel deben guardarse en el servidor para verse en el celular y otros navegadores.
+          Si aquí ve <strong>{archivosCargados.length} archivos</strong> y en otro dispositivo menos, pulse sincronizar.
+        </p>
+        <button
+          type="button"
+          onClick={handleForceSync}
+          disabled={isSyncing || !hasFiles}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#0D47A1] text-white text-xs font-bold uppercase tracking-wide hover:bg-blue-900 disabled:opacity-50 shrink-0"
+        >
+          <CloudUpload className={cn('w-4 h-4', isSyncing && 'animate-pulse')} />
+          {isSyncing ? 'Sincronizando…' : 'Sincronizar ahora'}
+        </button>
+      </div>
+      {syncMessage && (
+        <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{syncMessage}</p>
+      )}
       
       {/* 1. KPIs de Administración */}
       <div id="admin-kpis" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
