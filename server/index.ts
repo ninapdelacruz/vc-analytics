@@ -12,10 +12,8 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 function resolveDistPath(): string {
   const candidates = [
-    __dirname,
     path.join(process.cwd(), 'dist'),
     path.join(__dirname, 'dist'),
-    path.join(__dirname, '..', 'dist'),
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(candidate, 'index.html'))) {

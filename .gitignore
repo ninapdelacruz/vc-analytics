@@ -3,6 +3,7 @@ build/
 dist/
 dist-server/
 app.js
+server.js
 coverage/
 .DS_Store
 *.log
