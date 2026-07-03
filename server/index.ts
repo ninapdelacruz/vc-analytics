@@ -42,6 +42,29 @@ function resolveDistPath(): string {
 }
 
 const distPath = resolveDistPath();
+
+/** Carpetas public/ (logo personalizado en Hostinger: nodejs/public/). Van ANTES de dist/. */
+function resolvePublicDirs(): string[] {
+  const candidates = [
+    path.join(process.cwd(), 'public'),
+    path.join(__dirname, 'public'),
+    path.join(__dirname, '..', 'public'),
+    path.join(process.cwd(), '..', 'public'),
+  ];
+  const seen = new Set<string>();
+  const dirs: string[] = [];
+  for (const dir of candidates) {
+    const resolved = path.resolve(dir);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      dirs.push(resolved);
+    }
+  }
+  return dirs;
+}
+
+const publicDirs = resolvePublicDirs();
 const app = express();
 
 app.set('trust proxy', 1);
@@ -73,18 +96,32 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta API no encontrada.' });
 });
 
+function setStaticHeaders(res: express.Response, filePath: string) {
+  if (filePath.endsWith('.js')) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  } else if (filePath.endsWith('.css')) {
+    res.setHeader('Content-Type', 'text/css; charset=utf-8');
+  } else if (filePath.endsWith('.html')) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  } else if (/\.(png|jpe?g|gif|webp|svg|ico)$/i.test(filePath)) {
+    /* Logo y estáticos editables: no cachear agresivamente */
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  }
+}
+
+/* public/ tiene prioridad (escudo subido en Hostinger sin rebuild) */
+for (const pub of publicDirs) {
+  app.use(express.static(pub, {
+    index: false,
+    fallthrough: true,
+    setHeaders: setStaticHeaders,
+  }));
+}
+
 app.use(express.static(distPath, {
   index: false,
   fallthrough: true,
-  setHeaders(res, filePath) {
-    if (filePath.endsWith('.js')) {
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    } else if (filePath.endsWith('.css')) {
-      res.setHeader('Content-Type', 'text/css; charset=utf-8');
-    } else if (filePath.endsWith('.html')) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    }
-  },
+  setHeaders: setStaticHeaders,
 }));
 
 app.get('*', (req, res) => {
@@ -108,6 +145,7 @@ async function start() {
   console.log('[server] __dirname:', __dirname);
   console.log('[server] dist:', distPath);
   console.log('[server] dist producción OK:', isProductionDist(distPath));
+  console.log('[server] public dirs:', publicDirs.length ? publicDirs.join(' | ') : '(ninguno)');
 
   const hasAccessCode = Boolean(process.env.ACCESS_CODE?.trim());
   console.log('[server] ACCESS_CODE configurado:', hasAccessCode);

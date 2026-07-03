@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { obtenerPeriodosVisibles } from '../utils/calculations';
 import { cn } from './Sidebar';
 import type { SyncStatus } from '../utils/syncApi';
+import { ESCUDO_URL } from '../constants/branding';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -65,7 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <Menu className="w-5 h-5" />
             </button>
             <img
-              src="/escudo-villa-campo.png"
+              src={ESCUDO_URL}
               alt="Escudo IE Villa Campo"
               className="w-9 h-9 object-contain shrink-0 hidden sm:block"
             />
@@ -106,16 +107,16 @@ export const Layout: React.FC<LayoutProps> = ({
 
             <div
               className="hidden sm:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-lg border border-slate-200 bg-slate-50"
-              title={syncError ?? 'Sincronización MySQL'}
+              title={syncError ?? 'Estado de sincronización'}
             >
               {syncStatus === 'loading' || syncStatus === 'saving' ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /><span className="text-blue-700">{syncStatus === 'saving' ? 'Guardando' : 'Cargando'}</span></>
               ) : syncStatus === 'synced' ? (
-                <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700">MySQL</span></>
+                <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700">Sincronizado</span></>
               ) : syncStatus === 'offline' || syncStatus === 'error' ? (
                 <><CloudOff className="w-3.5 h-3.5 text-amber-600" /><span className="text-amber-700">Local</span></>
               ) : (
-                <><Cloud className="w-3.5 h-3.5 text-slate-400" /><span className="text-slate-500">MySQL</span></>
+                <><Cloud className="w-3.5 h-3.5 text-slate-400" /><span className="text-slate-500">Sincronizado</span></>
               )}
             </div>
 

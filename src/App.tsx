@@ -17,6 +17,7 @@ import {
   subscribeSyncStatus,
   type SyncStatus,
 } from './utils/syncApi';
+import { ESCUDO_URL } from './constants/branding';
 
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const HomeDashboard = lazy(() => import('./pages/HomeDashboard').then(m => ({ default: m.HomeDashboard })));
@@ -129,7 +130,7 @@ export default function App() {
       return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center">
           <img
-            src="/escudo-villa-campo.png"
+            src={ESCUDO_URL}
             alt="Escudo IE Villa Campo"
             className="w-20 h-20 object-contain mb-6"
           />

@@ -76,10 +76,11 @@ export async function putEstado(req: Request, res: Response) {
     const califJson = JSON.stringify(calificaciones);
     const alertasJson = JSON.stringify(alertas);
 
+    /* MariaDB/MySQL: pasar JSON como string (CAST(? AS JSON) falla en MariaDB). */
     await getPool().query(
       `INSERT INTO vc_estado_analitico
          (anio_escolar, periodo_activo, calificaciones, alertas, archivos_meta)
-       VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON))
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          periodo_activo = VALUES(periodo_activo),
          calificaciones = VALUES(calificaciones),
@@ -151,7 +152,7 @@ export async function putConfig(req: Request, res: Response) {
 
     await getPool().query(
       `INSERT INTO vc_configuracion_academica (id, json_config)
-       VALUES (1, CAST(? AS JSON))
+       VALUES (1, ?)
        ON DUPLICATE KEY UPDATE json_config = VALUES(json_config)`,
       [JSON.stringify(configuracion)]
     );

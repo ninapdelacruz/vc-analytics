@@ -5,6 +5,7 @@ import {
   Users, BookOpen, AlertTriangle, TrendingDown, ChevronRight, AlertCircle,
   BarChart2, Target, Bookmark, Settings, FileWarning, ClipboardList, Shield,
 } from 'lucide-react';
+import { ESCUDO_URL } from '../constants/branding';
 
 interface HomeProps {
   onNavigate: (tab: string) => void;
@@ -92,7 +93,7 @@ export const HomeDashboard: React.FC<HomeProps> = ({ onNavigate }) => {
         <div className="relative p-6 md:p-8 flex flex-col lg:flex-row lg:items-center gap-6">
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <img
-              src="/escudo-villa-campo.png"
+              src={ESCUDO_URL}
               alt="Escudo IE Villa Campo"
               className="w-16 h-16 md:w-20 md:h-20 object-contain rounded-full bg-white p-1 shadow-lg shrink-0"
             />

@@ -3,6 +3,7 @@ import { Home, BarChart2, TrendingDown, Target, Users, BookOpen, Bookmark, Clipb
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { isProtectedModule } from '../constants/protectedModules';
+import { ESCUDO_URL } from '../constants/branding';
 
 export function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -48,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-5 flex items-center justify-between gap-3 border-b border-blue-800/80">
         <div className="flex items-center gap-3 min-w-0">
           <img
-            src="/escudo-villa-campo.png"
+            src={ESCUDO_URL}
             alt="Escudo IE Villa Campo"
             className="w-11 h-11 object-contain rounded-full bg-white p-0.5 shadow-md shrink-0"
           />
