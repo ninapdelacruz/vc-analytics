@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import {
   isPerdida,
@@ -136,6 +136,7 @@ export const SubjectDashboard: React.FC = () => {
   const [selectedNivel, setSelectedNivel] = useState<NivelFiltro>('Todas');
   const [selectedAsignatura, setSelectedAsignatura] = useState<string>('Todas');
   const [desgloseSeleccion, setDesgloseSeleccion] = useState<{ asignatura: string; grado: number } | null>(null);
+  const desgloseRef = useRef<HTMLDivElement>(null);
 
   const baseData = useMemo(() => {
     if (calificaciones.length === 0) return null;
@@ -359,6 +360,15 @@ export const SubjectDashboard: React.FC = () => {
         : { asignatura, grado }
     );
   }, []);
+
+  useEffect(() => {
+    if (!desgloseSeleccion) return;
+    // Esperar al render del panel antes de hacer scroll
+    const id = requestAnimationFrame(() => {
+      desgloseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [desgloseSeleccion]);
 
   const tieneFiltros = selectedNivel !== 'Todas' || selectedAsignatura !== 'Todas' || desgloseSeleccion !== null;
 
@@ -724,9 +734,54 @@ export const SubjectDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Desglose por curso (al seleccionar celda del mapa) */}
+      {/* Mapas de calor — ancho completo al final */}
+      <div className="space-y-5">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm w-full">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <Grid3X3 className="w-3.5 h-3.5 text-slate-400" />
+            Mapa de calor · Asignaturas académicas ({periodo})
+          </h3>
+          <p className="text-[10px] text-slate-400 mb-4">
+            {metrics.asignaturasAcademicas.length} asignaturas · % notas en Bajo por grado · clic para comparar cursos
+          </p>
+          <SubjectHeatmap
+            asignaturas={metrics.asignaturasAcademicas}
+            grados={metrics.heatmapGrados}
+            cells={metrics.heatmapAcademicoCells}
+            meta={metrics.asignaturaMeta}
+            selectedCell={desgloseSeleccion}
+            onCellClick={handleHeatmapClick}
+          />
+        </div>
+
+        {metrics.asignaturasCI.length > 0 && (
+          <div className="bg-white p-5 rounded-xl border border-violet-200 shadow-sm w-full">
+            <h3 className="text-xs font-bold text-violet-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <Grid3X3 className="w-3.5 h-3.5 text-violet-400" />
+              Mapa de calor · Centros de interés ({periodo})
+            </h3>
+            <p className="text-[10px] text-violet-600 mb-4">
+              {metrics.asignaturasCI.length} centros · solo Bachillerato (6°–11°) · verde = estudiantes sin pérdidas
+            </p>
+            <SubjectHeatmap
+              asignaturas={metrics.asignaturasCI}
+              grados={metrics.heatmapGradosCI}
+              cells={metrics.heatmapCICells}
+              meta={metrics.asignaturaMeta}
+              selectedCell={desgloseSeleccion}
+              onCellClick={handleHeatmapClick}
+              variant="centroInteres"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Desglose por curso (justo debajo del mapa, al seleccionar celda) */}
       {desgloseSeleccion && (
-        <div className="bg-white border-2 border-blue-200 rounded-xl overflow-hidden shadow-sm">
+        <div
+          ref={desgloseRef}
+          className="bg-white border-2 border-blue-200 rounded-xl overflow-hidden shadow-sm"
+        >
           <div className="px-5 py-4 border-b border-blue-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-blue-50">
             <div className="flex items-center gap-2">
               <GraduationCap className="w-5 h-5 text-blue-600" />
@@ -805,48 +860,6 @@ export const SubjectDashboard: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Mapas de calor — ancho completo al final */}
-      <div className="space-y-5">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm w-full">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-            <Grid3X3 className="w-3.5 h-3.5 text-slate-400" />
-            Mapa de calor · Asignaturas académicas ({periodo})
-          </h3>
-          <p className="text-[10px] text-slate-400 mb-4">
-            {metrics.asignaturasAcademicas.length} asignaturas · % notas en Bajo por grado · clic para comparar cursos
-          </p>
-          <SubjectHeatmap
-            asignaturas={metrics.asignaturasAcademicas}
-            grados={metrics.heatmapGrados}
-            cells={metrics.heatmapAcademicoCells}
-            meta={metrics.asignaturaMeta}
-            selectedCell={desgloseSeleccion}
-            onCellClick={handleHeatmapClick}
-          />
-        </div>
-
-        {metrics.asignaturasCI.length > 0 && (
-          <div className="bg-white p-5 rounded-xl border border-violet-200 shadow-sm w-full">
-            <h3 className="text-xs font-bold text-violet-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <Grid3X3 className="w-3.5 h-3.5 text-violet-400" />
-              Mapa de calor · Centros de interés ({periodo})
-            </h3>
-            <p className="text-[10px] text-violet-600 mb-4">
-              {metrics.asignaturasCI.length} centros · solo Bachillerato (6°–11°) · verde = estudiantes sin pérdidas
-            </p>
-            <SubjectHeatmap
-              asignaturas={metrics.asignaturasCI}
-              grados={metrics.heatmapGradosCI}
-              cells={metrics.heatmapCICells}
-              meta={metrics.asignaturaMeta}
-              selectedCell={desgloseSeleccion}
-              onCellClick={handleHeatmapClick}
-              variant="centroInteres"
-            />
-          </div>
-        )}
-      </div>
     </div>
   );
 };
